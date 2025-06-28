@@ -2,26 +2,41 @@ CXX = g++
 CXXFLAGS = -O3 -Wall -I./inc
 OBJDIR = obj
 SRCDIR = src
+BINDIR = bin
 
-# Ensure obj directory exists
+# Ensure obj and bin directories exist
 $(shell mkdir -p $(OBJDIR))
+$(shell mkdir -p $(BINDIR))
 
-# Target executable
-TARGET = simpleSolver
+# Target executables
+SIMPLE_TARGET = $(BINDIR)/simpleSolver
+PROB_TARGET = $(BINDIR)/probSolver
 
 # Source and object files
-SRC = $(SRCDIR)/simpleSolver.cpp
-OBJ = $(OBJDIR)/simpleSolver.o
+SIMPLE_SRC = $(SRCDIR)/simpleSolver.cpp
+SIMPLE_OBJ = $(OBJDIR)/simpleSolver.o
+PROB_SRC = $(SRCDIR)/probSolver.cpp
+PROB_OBJ = $(OBJDIR)/probSolver.o
 
-# Main target
-$(TARGET): $(OBJ)
-	$(CXX) $(OBJ) -o $(TARGET)
+# Default target builds both
+all: $(SIMPLE_TARGET) $(PROB_TARGET)
+
+# Individual targets
+$(SIMPLE_TARGET): $(SIMPLE_OBJ)
+	$(CXX) $(SIMPLE_OBJ) -o $(SIMPLE_TARGET)
+
+$(PROB_TARGET): $(PROB_OBJ)
+	$(CXX) $(PROB_OBJ) -o $(PROB_TARGET)
 
 # Compile source files to object files
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-.PHONY: clean
+.PHONY: clean all simple probabilistic
+
+# Convenience targets
+simple: $(SIMPLE_TARGET)
+probabilistic: $(PROB_TARGET)
 
 clean:
-	rm -f $(OBJDIR)/*.o $(TARGET)
+	rm -f $(OBJDIR)/*.o $(SIMPLE_TARGET) $(PROB_TARGET)
