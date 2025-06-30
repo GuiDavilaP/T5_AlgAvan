@@ -107,10 +107,29 @@ report:
 	done
 	@echo "Relatório salvo em results/report.txt"
 
+# Python virtual environment setup
+setup-python:
+	python3 -m venv venv
+	@echo "Virtual environment created. Activate with: source venv/bin/activate"
+
+install-python-deps: venv/bin/activate
+	./venv/bin/pip install -r requirements.txt
+
+# Generate plots from results
+plot-results: install-python-deps
+	@if [ ! -d "results" ]; then echo "No results found. Run 'make test-analysis' first."; exit 1; fi
+	./venv/bin/python src/plotResults.py
+
+venv/bin/activate:
+	python3 -m venv venv
+	./venv/bin/pip install --upgrade pip
+
+.PHONY: setup-python install-python-deps plot-results
+
 # Limpa arquivos compilados e resultados
 clean:
 	rm -f $(TARGETS)
-	rm -rf data/ results/
+	rm -rf data/ results/ plots/
 
 # Limpa apenas executáveis
 clean-bin:
@@ -119,6 +138,9 @@ clean-bin:
 # Limpa apenas resultados
 clean-results:
 	rm -rf results/
+
+clean-plots:
+	rm -rf plots/
 
 # Mostra ajuda
 help:
@@ -141,11 +163,13 @@ help:
 	@echo "Visualização de resultados:"
 	@echo " 	make show-results 	 - Mostra resumo dos resultados"
 	@echo " 	make report 	 	 - Gera relatório em texto"
+	@echo " 	make plot-results 	 - Gera gráficos a partir dos resultados"
 	@echo
 	@echo "Limpeza:"
 	@echo " 	make clean 	 	 - Remove tudo (executáveis, dados, resultados)"
 	@echo " 	make clean-bin 	 - Remove apenas executáveis"
 	@echo " 	make clean-results 	 - Remove apenas resultados"
+	@echo " 	make clean-plots 	 - Remove apenas gráficos"
 	@echo
 	@echo "Estrutura dos testes:"
 	@echo " 	- Teste 1 (items): Varia n de 1000 a 15000 itens"

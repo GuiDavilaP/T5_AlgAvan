@@ -67,8 +67,8 @@ test_set() {
         echo -e "${RED}ERRO: Diretório 'data/${test_type}/' não existe.${NC}"
         echo -e "${RED}Por favor, execute 'make generate-${test_type}' ou 'make generate-tests' primeiro.${NC}"
         # Updated CSV header
-        echo "Instance,N,Capacity,MaxWeight,Avg_Simple_Result,Avg_Simple_Time,Avg_Prob_Result,Avg_Prob_Time,Optimal,Avg_Time_Ratio,Avg_Percentage_Diff" > $csv_file
-        echo "N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,NO,N/A,N/A" >> $csv_file # No status columns
+        echo "Instance,N,Capacity,MaxWeight,Avg_Simple_Result,Avg_Simple_Time,Avg_Prob_Result,Avg_Prob_Time,Optimal_Percentage,Avg_Time_Ratio,Avg_Percentage_Diff" > $csv_file
+        echo "N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A" >> $csv_file # Optimal_Percentage is N/A if no data
         return 1
     fi
     
@@ -79,15 +79,15 @@ test_set() {
         echo -e "${RED}ERRO: Nenhum arquivo '${file_pattern}' encontrado em 'data/${test_type}/'.${NC}"
         echo -e "${RED}Por favor, execute 'make generate-${test_type}' ou 'make generate-tests' primeiro.${NC}"
         # Updated CSV header
-        echo "Instance,N,Capacity,MaxWeight,Avg_Simple_Result,Avg_Simple_Time,Avg_Prob_Result,Avg_Prob_Time,Optimal,Avg_Time_Ratio,Avg_Percentage_Diff" > $csv_file
-        echo "N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,NO,N/A,N/A" >> $csv_file # No status columns
+        echo "Instance,N,Capacity,MaxWeight,Avg_Simple_Result,Avg_Simple_Time,Avg_Prob_Result,Avg_Prob_Time,Optimal_Percentage,Avg_Time_Ratio,Avg_Percentage_Diff" > $csv_file
+        echo "N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A" >> $csv_file # Optimal_Percentage is N/A if no data
         return 1
     fi
     
     echo "Encontrados $file_count arquivos de teste."
 
     # Cabeçalho do CSV atualizado para médias e sem colunas de status
-    echo "Instance,N,Capacity,MaxWeight,Avg_Simple_Result,Avg_Simple_Time,Avg_Prob_Result,Avg_Prob_Time,Optimal,Avg_Time_Ratio,Avg_Percentage_Diff" > $csv_file
+    echo "Instance,N,Capacity,MaxWeight,Avg_Simple_Result,Avg_Simple_Time,Avg_Prob_Result,Avg_Prob_Time,Optimal_Percentage,Avg_Time_Ratio,Avg_Percentage_Diff" > $csv_file
     
     # Processa cada instância do conjunto na subpasta correta usando find para robustez
     find "data/${test_type}" -name "$file_pattern" -type f | sort | while read file; do
@@ -104,8 +104,9 @@ test_set() {
         local sum_simple_time=0
         local sum_prob_result=0
         local sum_prob_time=0
-        local sum_percentage_diff=0
-        local count_diff_calc=0
+        local sum_percentage_diff_non_optimal=0 # Sum of percentage differences ONLY for non-optimal runs
+        local count_non_optimal_diff_calc=0     # Count of non-optimal runs where diff was calculated
+        local optimal_reps_count=0              # Count of repetitions where simple_result_rep == prob_result_rep
         local simple_success_count=0
         local prob_success_count=0
         local all_simple_success="YES" # Flag para verificar se todas as repetições do simpleSolver foram SUCCESS
@@ -141,12 +142,19 @@ test_set() {
                 all_prob_success="NO" # Se uma falha, marca como NO
             fi
 
-            # Calcula diferença percentual para esta repetição se ambos SUCESSO e diferentes
-            if [ "$simple_status_rep" = "SUCCESS" ] && [ "$prob_status_rep" = "SUCCESS" ] && [ "$simple_result_rep" != "$prob_result_rep" ] && (( $(echo "$simple_result_rep != 0" | bc -l) )); then
-                local percentage_diff_rep=$(echo "scale=4; ($simple_result_rep - $prob_result_rep) / $simple_result_rep * 100" | bc -l 2>/dev/null || echo "N/A")
-                if [ "$percentage_diff_rep" != "N/A" ]; then
-                    sum_percentage_diff=$(echo "scale=4; $sum_percentage_diff + $percentage_diff_rep" | bc -l)
-                    count_diff_calc=$((count_diff_calc + 1))
+            # Check for optimality for this repetition
+            if [ "$simple_status_rep" = "SUCCESS" ] && [ "$prob_status_rep" = "SUCCESS" ]; then
+                if [ "$simple_result_rep" = "$prob_result_rep" ]; then
+                    optimal_reps_count=$((optimal_reps_count + 1))
+                else
+                    # Calculate percentage difference ONLY for non-optimal runs
+                    if (( $(echo "$simple_result_rep != 0" | bc -l) )); then
+                        local percentage_diff_rep=$(echo "scale=4; ($simple_result_rep - $prob_result_rep) / $simple_result_rep * 100" | bc -l 2>/dev/null || echo "N/A")
+                        if [ "$percentage_diff_rep" != "N/A" ]; then
+                            sum_percentage_diff_non_optimal=$(echo "scale=4; $sum_percentage_diff_non_optimal + $percentage_diff_rep" | bc -l)
+                            count_non_optimal_diff_calc=$((count_non_optimal_diff_calc + 1))
+                        fi
+                    fi
                 fi
             fi
         done # End of repetitions loop
@@ -156,9 +164,9 @@ test_set() {
         local avg_simple_time="N/A"
         local avg_prob_result="N/A"
         local avg_prob_time="N/A"
+        local optimal_percentage_for_instance="N/A" # Renomeado de 'optimal_match'
         local avg_percentage_diff="N/A"
         local avg_time_ratio="N/A"
-        local optimal_match="NO" # Renomeado de 'correct' para 'optimal_match'
 
         if [ "$simple_success_count" -gt 0 ]; then
             avg_simple_result=$(echo "scale=0; $sum_simple_result / $simple_success_count" | bc -l)
@@ -170,33 +178,33 @@ test_set() {
             avg_prob_time=$(echo "scale=4; $sum_prob_time / $prob_success_count" | bc -l)
         fi
 
-        # Verifica se as médias são iguais para o status 'Optimal'
-        # Considera "Optimal" apenas se ambos os solvers foram SUCCESS em TODAS as repetições
-        if [ "$all_simple_success" = "YES" ] && [ "$all_prob_success" = "YES" ]; then
-            if [ "$avg_simple_result" = "$avg_prob_result" ]; then
-                optimal_match="YES"
-                echo -e "${GREEN}OK (Médias Iguais)${NC}"
+        # Calcula Optimal_Percentage para a instância
+        if [ "$simple_success_count" -gt 0 ] && [ "$prob_success_count" -gt 0 ]; then
+            optimal_percentage_for_instance=$(echo "scale=2; ($optimal_reps_count * 100) / $num_repetitions" | bc -l)
+            if [ "$optimal_percentage_for_instance" = "100.00" ]; then
+                echo -e "${GREEN}OK (100% Ótimo)${NC}"
             else
-                optimal_match="NO"
-                echo -e "${RED}DIFFERENT (Médias)${NC}"
+                echo -e "${YELLOW}PARCIALMENTE ÓTIMO (${optimal_percentage_for_instance}%) ${NC}"
             fi
         else
-            optimal_match="N/A" # Se houve timeout/erro em alguma repetição, não é "Optimal"
             echo -e "${RED}TIMEOUT/ERROR (Algum Solver)${NC}"
         fi
 
+        # Calcula diferença percentual média (APENAS para runs não ótimas)
+        # Se count_non_optimal_diff_calc for 0, significa que todas as runs bem-sucedidas foram ótimas.
+        if [ "$count_non_optimal_diff_calc" -gt 0 ]; then
+            avg_percentage_diff=$(echo "scale=4; $sum_percentage_diff_non_optimal / $count_non_optimal_diff_calc" | bc -l 2>/dev/null || echo "N/A")
+        else
+            avg_percentage_diff="N/A" # Se não houve runs não-ótimas para calcular a diferença
+        fi
+        
         # Calcula razão de tempo média
-        if [ "$all_simple_success" = "YES" ] && [ "$all_prob_success" = "YES" ] && (( $(echo "$avg_prob_time > 0" | bc -l) )); then
+        if [ "$simple_success_count" -gt 0 ] && [ "$prob_success_count" -gt 0 ] && (( $(echo "$avg_prob_time > 0" | bc -l) )); then
             avg_time_ratio=$(echo "scale=4; $avg_simple_time / $avg_prob_time" | bc -l 2>/dev/null || echo "N/A")
         fi
-
-        # Calcula diferença percentual média
-        if [ "$count_diff_calc" -gt 0 ]; then
-            avg_percentage_diff=$(echo "scale=2; $sum_percentage_diff / $count_diff_calc" | bc -l 2>/dev/null || echo "N/A")
-        fi
             
-        # Escreve linha no CSV (sem colunas de status individuais)
-        echo "$instance_name,$n,$capacity,$max_weight,$avg_simple_result,$avg_simple_time,$avg_prob_result,$avg_prob_time,$optimal_match,$avg_time_ratio,$avg_percentage_diff" >> $csv_file
+        # Escreve linha no CSV
+        echo "$instance_name,$n,$capacity,$max_weight,$avg_simple_result,$avg_simple_time,$avg_prob_result,$avg_prob_time,$optimal_percentage_for_instance,$avg_time_ratio,$avg_percentage_diff" >> $csv_file
     done
     
     echo -e "${GREEN}Resultados salvos em: $csv_file${NC}"
@@ -235,17 +243,17 @@ for test_type in "${TEST_SETS_TO_RUN[@]}"; do
     csv_file="results/${test_type}_results.csv"
     if [ -f "$csv_file" ]; then
         total=$(tail -n +2 "$csv_file" | wc -l)
-        # Conta agora as linhas onde a coluna 'Optimal' é 'YES'
-        optimal_matches=$(tail -n +2 "$csv_file" | grep ",YES," | wc -l) 
-        accuracy=$(echo "scale=2; $optimal_matches * 100 / $total" | bc -l) # Usa optimal_matches
+        # Calcula a média da coluna Optimal_Percentage para o relatório resumido
+        # A nova coluna é a 9ª (índice 8 em base 0)
+        avg_optimal_percentage=$(tail -n +2 "$csv_file" | cut -d',' -f9 | grep -v "N/A" | awk '{sum+=$1; count++} END {if(count>0) printf "%.2f", sum/count; else print "N/A"}')
 
         echo "  Conjunto $test_type:"
         echo "  Total de instâncias: $total"
-        echo "  Resultados Ótimos (médias iguais): $optimal_matches" # Texto atualizado
-        echo "  Taxa de Optimalidade (médias iguais): ${accuracy}%" # Texto atualizado
+        echo "  Média de Optimalidade das Instâncias: ${avg_optimal_percentage}%" # Texto atualizado
         
-        avg_simple=$(tail -n +2 "$csv_file" | cut -d',' -f6 | grep -v "N/A" | awk '{sum+=$1; count++} END {if(count>0) printf "%.4f", sum/count; else print "N/A"}') # Coluna ajustada
-        avg_prob=$(tail -n +2 "$csv_file" | cut -d',' -f8 | grep -v "N/A" | awk '{sum+=$1; count++} END {if(count>0) printf "%.4f", sum/count; else print "N/A"}') # Coluna ajustada
+        # Colunas de tempo e speedup
+        avg_simple=$(tail -n +2 "$csv_file" | cut -d',' -f6 | grep -v "N/A" | awk '{sum+=$1; count++} END {if(count>0) printf "%.4f", sum/count; else print "N/A"}')
+        avg_prob=$(tail -n +2 "$csv_file" | cut -d',' -f8 | grep -v "N/A" | awk '{sum+=$1; count++} END {if(count>0) printf "%.4f", sum/count; else print "N/A"}')
         
         echo "  Tempo médio Simple Solver: ${avg_simple}s"
         echo "  Tempo médio Prob Solver: ${avg_prob}s"
@@ -257,8 +265,10 @@ for test_type in "${TEST_SETS_TO_RUN[@]}"; do
             echo "  Speedup médio: N/A"
         fi
 
-        avg_percentage_diff=$(tail -n +2 "$csv_file" | cut -d',' -f11 | grep -v "N/A" | awk '{sum+=$1; count++} END {if(count>0) printf "%.2f", sum/count; else print "N/A"}') # Coluna ajustada
-        echo "  Diferença percentual média (quando diferente): ${avg_percentage_diff}%"
+        # Coluna de diferença percentual média
+        # Esta média agora só considera as linhas onde Avg_Percentage_Diff não é N/A
+        avg_percentage_diff=$(tail -n +2 "$csv_file" | cut -d',' -f11 | grep -v "N/A" | awk '{sum+=$1; count++} END {if(count>0) printf "%.2f", sum/count; else print "N/A"}')
+        echo "  Diferença percentual média (apenas não-ótimos): ${avg_percentage_diff}%" # Texto atualizado
         echo
     fi
 done
