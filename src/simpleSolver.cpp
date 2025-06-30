@@ -58,11 +58,31 @@ int knapsack(int n, int capacity, int values[], int weights[]){
 }
 
 int main(){
-    int values[] = {3,3,4};
-    int weights[] = {2,3,6};
-    int W = 5;
-    int n = sizeof(values) / sizeof(int);
+    int n, W;
+    
+    // Lê primeira linha: n W
+    std::cin >> n >> W;
+    
+    // Aloca arrays dinâmicos
+    int* values = new int[n];
+    int* weights = new int[n];
+    
+    // Lê segunda linha: valores p1, ..., pn
+    for(int i = 0; i < n; i++){
+        std::cin >> values[i];
+    }
+    
+    // Lê terceira linha: pesos w1, ..., wn
+    for(int i = 0; i < n; i++){
+        std::cin >> weights[i];
+    }
 
     int result = knapsack(n, W, values, weights);
     std::cout << result << std::endl;
+    
+    // Libera memória
+    delete[] values;
+    delete[] weights;
+    
+    return 0;
 }
